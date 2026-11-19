@@ -6,12 +6,18 @@ something breaks on your machine, you can look up the symptom first. The bundle 
 fifteen; each entry says which file does. Use this file when a step of `README.md` or `FOR_AGENT.md`
 fails.
 
+Each lesson carries an **Axis** tag (`all`, `distro: ...`, `desktop: ...`, `hardware: ...`): the part of the
+bundle (`distros/`, `desktops/`, `hardware/`) whose folder is the right place for a fix that only some
+machines need. New lessons from other machines go in the matching folder's README, with a link here.
+
 Everything below was observed on one machine (Intel laptop with an NVIDIA GPU, Omarchy, libvirt 12.8,
 Looking Glass B7). Your hardware may fail in other ways.
 
 ## The 15 failures
 
 ### 1. Wrong firmware feature name in virt-install
+
+**Axis:** distro: arch (edk2 firmware descriptors; other distros ship different ones)
 
 - **Symptom:** `virt-install` fails with `Unable to find 'efi' firmware that is compatible`.
 - **Cause:** The boot option `firmware.feature0.name=enrolled-keys` asks for a firmware descriptor that
@@ -20,6 +26,8 @@ Looking Glass B7). Your hardware may fail in other ways.
   with `--features smm.state=on`. Handled by `create-vm.sh`.
 
 ### 2. `/dev/kvm` has the wrong group and QEMU cannot use it
+
+**Axis:** all distros (udev rule ordering)
 
 - **Symptom:** `/dev/kvm` is `root:input 0660` instead of `root:kvm 0666`, and QEMU fails with
   `Could not access KVM kernel module: No such file or directory`.
@@ -34,6 +42,8 @@ Looking Glass B7). Your hardware may fail in other ways.
 
 ### 3. The VM has no network
 
+**Axis:** distro: firewall (ufw here; see the distro folder for yours)
+
 - **Symptom:** Windows installs but has no connectivity: no DHCP lease, no DNS, no internet.
 - **Cause:** Omarchy enables ufw with default deny for incoming and routed traffic. That drops the
   guest's DHCP and DNS requests to dnsmasq on `virbr0` and the forwarded traffic.
@@ -44,6 +54,8 @@ Looking Glass B7). Your hardware may fail in other ways.
 
 ### 4. Microsoft blocks scripted ISO downloads
 
+**Axis:** all
+
 - **Symptom:** Tools such as `quickget` fail with `Microsoft blocked the automated download request based
   on your IP address`.
 - **Cause:** The Windows 11 download page rejects non-browser clients.
@@ -51,6 +63,8 @@ Looking Glass B7). Your hardware may fail in other ways.
   then pass it to `create-vm.sh --iso`.
 
 ### 5. Windows setup: no disk, and it insists on a Microsoft account
+
+**Axis:** all
 
 - **Symptom:** "Where do you want to install Windows?" lists no disks. Later, setup demands a Microsoft
   account and an internet connection.
@@ -63,6 +77,8 @@ Looking Glass B7). Your hardware may fail in other ways.
 
 ### 6. The host will not release the GPU
 
+**Axis:** desktop: hyprland (the compositor opens the GPU); the idea applies to every desktop
+
 - **Symptom:** `winvm-gpu on` reported `Still in use on the host:` (now: `Close these first, they are using the GPU:`) with Hyprland, Xwayland, systemd-logind
   and the polkit agent holding the GPU's `/dev/dri/cardN` or `/dev/nvidia*`. Unbinding the GPU would hang
   or fail.
@@ -72,10 +88,12 @@ Looking Glass B7). Your hardware may fail in other ways.
   config leave the passthrough GPU out of `AQ_DRM_DEVICES` and point EGL, GLX and Vulkan at mesa and the
   iGPU. The flag is only read at Hyprland start, so you must log out and in; only then can
   `winvm-gpu on` bind the GPU to vfio-pci (`driver_override`, unbind, `drivers_probe`). Handled by
-  `files/usr/local/bin/winvm-gpu` (two-step `on`) and `hyprland-snippet.lua`, which you merge into your
+  `files/usr/local/bin/winvm-gpu` (two-step `on`) and `desktops/hyprland/hyprland-snippet.lua`, which you merge into your
   Hyprland config.
 
 ### 7. The IOMMU is narrower than the CPU
+
+**Axis:** hardware: intel-host_nvidia-pt (Intel IOMMU address width)
 
 - **Symptom:** QEMU dies at VM start with `qemu: hardware error: vfio: DMA mapping failed, unable to
   continue`, preceded by `vfio_container_dma_map(..., 0x382800000000, ...) = -22`.
@@ -88,6 +106,8 @@ Looking Glass B7). Your hardware may fail in other ways.
 
 ### 8. Btrfs checksum errors on the VM disk
 
+**Axis:** all (btrfs images; see your distro folder for the default filesystem)
+
 - **Symptom:** The kernel log shows `BTRFS warning ... csum failed ... ino <the qcow2 file>` and
   `direct IO failed`, then QEMU stops with an `IO error` on `device='virtio-disk0'`.
 - **Cause:** A copy-on-write qcow2 file on btrfs combined with `cache=none` (O_DIRECT) produces checksum
@@ -99,6 +119,8 @@ Looking Glass B7). Your hardware may fail in other ways.
 
 ### 9. The NVIDIA driver refuses to start in a VM
 
+**Axis:** hardware: nvidia passthrough
+
 - **Symptom:** The GPU shows a warning icon with "Code 43" in Windows Device Manager (the usual
   behavior of the NVIDIA driver in a VM it recognises). It did not occur after the fix below.
 - **Cause:** The driver detects the hypervisor.
@@ -107,6 +129,8 @@ Looking Glass B7). Your hardware may fail in other ways.
   `winvm-gpu` does the vfio-pci binding itself; libvirt must not rebind them. Handled by `enable-gpu.sh`.
 
 ### 10. Looking Glass has nothing to capture
+
+**Axis:** hardware: laptop or headless dGPU (no display output)
 
 - **Symptom:** The Looking Glass host in Windows logs `Failed to locate a valid output device` (or the
   client says the host is not running).
@@ -123,6 +147,8 @@ Looking Glass B7). Your hardware may fail in other ways.
 
 ### 11. Clicks land on an invisible screen
 
+**Axis:** all
+
 - **Symptom:** In the Looking Glass window the mouse and keyboard seem dead or act on something you
   cannot see.
 - **Cause:** While the emulated QXL display exists, Windows has two displays and input is routed to the
@@ -134,11 +160,15 @@ Looking Glass B7). Your hardware may fail in other ways.
 
 ### 12. Looking Glass client `-s` disables input
 
+**Axis:** all
+
 - **Symptom:** The Looking Glass window shows the desktop but mouse and keyboard do nothing.
 - **Cause:** `-s` turns the SPICE client off, and SPICE carries the input.
 - **Fix:** Do not pass `-s`. The launcher `win11-vm` runs plain `looking-glass-client`.
 
 ### 13. Looking Glass shared memory
+
+**Axis:** all
 
 - **Symptom:** The client cannot open `/dev/shm/looking-glass` (missing or not accessible), or the
   host and client see no shared memory.
@@ -151,6 +181,8 @@ Looking Glass B7). Your hardware may fail in other ways.
 
 ### 14. No way to drive Windows from the host (guest agent channel)
 
+**Axis:** all
+
 - **Symptom:** `guest/vm-guest-exec` fails with `Guest agent is not responding`, so the Windows side
   cannot be scripted.
 - **Cause:** The VM has no channel to the QEMU guest agent, or the agent is not installed/running in
@@ -161,6 +193,8 @@ Looking Glass B7). Your hardware may fail in other ways.
   installation scriptable (and lets a coding agent do it).
 
 ### 15. USB keys and drives need to follow into the VM
+
+**Axis:** all
 
 - **Symptom:** A security key or USB stick plugged in while Windows runs is not seen by Windows; a
   device that was already plugged in when the VM started is missing; or a naive udev rule or libvirt hook

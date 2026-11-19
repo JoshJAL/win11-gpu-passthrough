@@ -1,0 +1,3 @@
+# Findings in files/ scripts that are installed verbatim on user machines (install.sh --check compares bytes),
+# so they are accepted here instead of edited.
+disable=SC1090,SC2053

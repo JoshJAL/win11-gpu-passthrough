@@ -2,6 +2,9 @@
 # Inspect this machine and propose a /etc/win11-vm.conf for the win11 GPU-passthrough VM.
 #
 #   ./detect.sh > win11-vm.conf    config proposal on stdout, hardware report on stderr
+#   ./detect.sh --profile          machine profile only: allowlisted KEY=VALUE lines on stdout, nothing on
+#                                  stderr (hardware + distro, no user/host names, serials or UUIDs); this
+#                                  is what ./handoff.sh and ./verify.sh read
 #   ./detect.sh -h | --help        this text
 #
 # Strictly read-only: it only reads /sys, /proc, /etc and runs lspci/findmnt/id/nvidia-smi.
@@ -10,9 +13,14 @@
 # The last line is the verdict. Exit status: 0 = no NO-GO finding, 1 = at least one.
 # Review the proposal, then install it with:  ./install.sh --conf ./win11-vm.conf
 set -u
+PROFILE=0
+B=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=lib/bundle.sh
+. "$B/lib/bundle.sh"
 
 case ${1:-} in
-  -h|--help) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  --profile) PROFILE=1 ;;
   "") ;;
   *) echo "detect.sh: unknown argument: $1 (see --help)" >&2; exit 2 ;;
 esac
@@ -28,10 +36,15 @@ USB_VENDORS="1050"
 USB_STORAGE=1
 LG_SHM_MB=128
 
-n_nogo=0 n_warn=0
-say() {  # say <GO|WARN|NO-GO|INFO> <message>
-  case $1 in NO-GO) n_nogo=$((n_nogo + 1)) ;; WARN) n_warn=$((n_warn + 1)) ;; esac
-  printf '%-6s %s\n' "$1" "$2" >&2
+n_nogo=0 n_warn=0 nogo_msgs=()
+say() {  # say <GO|WARN|NO-GO|INFO> <message>   (--profile prints no report; it only counts)
+  case $1 in NO-GO) n_nogo=$((n_nogo + 1)); nogo_msgs+=("$2") ;; WARN) n_warn=$((n_warn + 1)) ;; esac
+  (( PROFILE )) || printf '%-6s %s\n' "$1" "$2" >&2
+}
+# The kernel command line carries disk and encryption identifiers: show it with those values removed.
+redact_cmdline() {
+  sed -E 's/(^| )((rd\.)?luks\.[a-z.]+|root|cryptdevice|cryptkey|resume|resume_offset)=[^ ]*/\1\2=<redacted>/g;
+          s/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<uuid>/g'
 }
 rd() {  # rd <file>: first line of a file, empty if unreadable
   local v=
@@ -65,7 +78,7 @@ cpu_model=$(sed -n 's/^model name[[:space:]]*:[[:space:]]*//p' /proc/cpuinfo | h
 cpu_bits=$(sed -n 's/^address sizes[[:space:]]*:[[:space:]]*\([0-9]*\) bits physical.*/\1/p' /proc/cpuinfo | head -n1)
 say INFO "kernel $kernel"
 say INFO "CPU: ${cpu_model:-unknown} (${cpu_vendor:-unknown vendor}, ${cpu_bits:-?} physical address bits)"
-say INFO "kernel command line: $(rd /proc/cmdline)"
+say INFO "kernel command line: $(rd /proc/cmdline | redact_cmdline)"
 
 # CPU virtualization
 if grep -qE '^flags[[:space:]]*:.*[[:space:]](vmx|svm)([[:space:]]|$)' /proc/cpuinfo; then
@@ -89,7 +102,11 @@ else
   case $iommu_vendor in intel) flag=intel_iommu=on vtd="Intel VT-d" ;; amd) flag=amd_iommu=on vtd="AMD-Vi (IOMMU)" ;; *) flag="intel_iommu=on (Intel) or amd_iommu=on (AMD)" vtd="VT-d / AMD-Vi" ;; esac
   say NO-GO "IOMMU is off (no IOMMU groups): passthrough is impossible until it is enabled"
   say INFO "fix 1: enable $vtd in the firmware/BIOS setup"
-  say INFO "fix 2: Omarchy boots with Limine; add '$flag iommu=pt' to a KERNEL_CMDLINE[default]+= line in /etc/default/limine, run 'sudo limine-update', reboot, run ./detect.sh again"
+  if distro_id=$(pick_distro "$B") && load_distro "$B" "$distro_id" && declare -F distro_iommu_cmdline_hint >/dev/null; then
+    say INFO "fix 2: $(distro_iommu_cmdline_hint "$flag")"
+  else
+    say INFO "fix 2: add '$flag iommu=pt' to the kernel command line in your bootloader configuration, regenerate its config, reboot, run ./detect.sh again"
+  fi
 fi
 
 # ------------------------------------------------------------------------------------------
@@ -106,7 +123,7 @@ for d in "$SYS"/bus/pci/devices/*; do
   if [[ $ven == 0x10de || $ven == 0x1002 ]]; then tier1+=("$a"); else tier2+=("$a"); fi
 done
 cands=("${tier1[@]}" "${tier2[@]}")
-GPU= others=
+GPU='' others=''
 if (( ${#gpus[@]} == 0 )); then
   say NO-GO "no PCI display controller (class 0x0300/0x0302) found"
 elif (( ${#gpus[@]} == 1 )); then
@@ -191,10 +208,10 @@ fi
 # ------------------------------------------------------------------------------------------
 # 5. IOMMU_LIMIT
 # ------------------------------------------------------------------------------------------
-IOMMU_LIMIT=
+IOMMU_LIMIT='' mgaw_min=''
 if (( iommu_on )); then
   if [[ $iommu_vendor == intel ]]; then
-    mgaw_min= nunits=0
+    nunits=0
     for u in "$SYS"/class/iommu/dmar*/intel-iommu/cap; do
       [[ -r $u ]] || continue
       cap=$(rd "$u")
@@ -318,6 +335,95 @@ for f in "$UDEV_RULES_DIR"/*.rules; do
   done <"$f"
 done
 (( n_stray == 0 )) && say GO "no match-less udev rules in $UDEV_RULES_DIR"
+
+# ------------------------------------------------------------------------------------------
+# --profile: allowlisted KEY=VALUE lines instead of the proposal (stdout), no report (stderr)
+# ------------------------------------------------------------------------------------------
+if (( PROFILE )); then
+  pv() { printf '%s' "$*" | tr -d '[:cntrl:]' | sed 's/[[:space:]]\{1,\}/ /g; s/^ //; s/ $//'; }
+  emit() { printf '%s=%s\n' "$1" "$(pv "${2:-}")"; }
+  vendor_key() {  # vendor_key <pci addr>
+    case $(rd "$SYS/bus/pci/devices/$1/vendor") in 0x10de) echo nvidia ;; 0x1002) echo amd ;; 0x8086) echo intel ;; "") echo unknown ;; *) echo other ;; esac
+  }
+  gpu_model_of() {  # marketing name of a GPU, "Vendor Name", from the PCI database
+    local dev inner pre
+    dev=$(pci_device "$1"); [[ -n $dev ]] || { echo unknown; return; }
+    inner=$dev; [[ $dev == *\[*\]* ]] && { inner=${dev#*\[}; inner=${inner%%\]*}; }
+    case $(rd "$SYS/bus/pci/devices/$1/vendor") in 0x10de) pre=NVIDIA ;; 0x1002) pre=AMD ;; 0x8086) pre=Intel ;; *) pre= ;; esac
+    if [[ -n $pre && $inner != "$pre"* ]]; then echo "$pre $inner"; else echo "$inner"; fi
+  }
+  host_gpu=
+  for a in "${gpus[@]}"; do [[ $a != "$GPU" && $(rd "$SYS/bus/pci/devices/$a/boot_vga") == 1 ]] && { host_gpu=$a; break; }; done
+  if [[ -z $host_gpu ]]; then for a in "${gpus[@]}"; do [[ $a != "$GPU" ]] && { host_gpu=$a; break; }; done; fi
+
+  bootloader=unknown
+  if [[ -e /etc/default/limine || -e /boot/limine.conf || -e /boot/limine/limine.conf ]]; then bootloader=limine
+  elif compgen -G "/sys/firmware/efi/efivars/LoaderInfo-*" >/dev/null && grep -aqi 'systemd-boot' /sys/firmware/efi/efivars/LoaderInfo-* 2>/dev/null; then bootloader=systemd-boot
+  elif [[ -e /boot/grub/grub.cfg || -e /boot/grub2/grub.cfg || -e /etc/default/grub ]]; then bootloader=grub
+  elif [[ -e /boot/refind_linux.conf || -d /boot/EFI/refind ]]; then bootloader=refind
+  fi
+  firewall=none
+  if grep -qx 'ENABLED=yes' /etc/ufw/ufw.conf 2>/dev/null; then firewall=ufw
+  elif have systemctl && systemctl is-active --quiet firewalld 2>/dev/null; then firewall=firewalld
+  elif have systemctl && systemctl is-active --quiet nftables 2>/dev/null; then firewall=nftables
+  fi
+  pkgmgr=unknown
+  for m in pacman apt dnf zypper xbps-install apk emerge nix-env; do have "$m" && { pkgmgr=$m; break; }; done
+  desk=${XDG_CURRENT_DESKTOP:-${XDG_SESSION_DESKTOP:-}}; desk=${desk##*:}; desk=$(printf '%s' "$desk" | tr '[:upper:]' '[:lower:]')
+  [[ $desk =~ ^[a-z0-9._-]+$ ]] || desk=unknown
+  case $(rd "$SYS/class/dmi/id/chassis_type") in
+    8|9|10|14|30|31|32) ff=laptop ;; 3|4|5|6|7|13|15|16|24|35|36) ff=desktop ;; 17|23|28|29) ff=server ;; 1|2|"") ff=unknown ;; *) ff=other ;; esac
+  case $cpu_vendor in GenuineIntel) cpuv=intel ;; AuthenticAMD) cpuv=amd ;; *) cpuv=other ;; esac
+  isolated=unknown group_size=
+  if [[ -n $GPU ]]; then
+    if (( ${#bad[@]} )); then isolated=no; else isolated=yes; fi
+    group_size=${#members[@]}
+  fi
+  lg_ver=
+  if have looking-glass-client; then lg_ver=$(timeout 5 looking-glass-client --help 2>&1 | sed -n 's/.*Looking Glass (\(.*\))$/\1/p' | head -n1); fi
+
+  emit PROFILE_VERSION 1
+  emit DISTRO_ID "$(os_release_val ID)"
+  emit DISTRO_ID_LIKE "$(os_release_val ID_LIKE)"
+  emit DISTRO_VERSION_ID "$(os_release_val VERSION_ID)"
+  emit KERNEL "$kernel"
+  emit INIT "$(rd /proc/1/comm)"
+  emit BOOTLOADER "$bootloader"
+  emit FIREWALL "$firewall"
+  emit PKG_MANAGER "$pkgmgr"
+  emit DESKTOP "$desk"
+  emit SESSION_TYPE "${XDG_SESSION_TYPE:-unknown}"
+  emit CPU_VENDOR "$cpuv"
+  emit CPU_MODEL "${cpu_model:-unknown}"
+  emit CPU_PHYS_BITS "${cpu_bits:-}"
+  emit IOMMU "$( ((iommu_on)) && echo on || echo off )"
+  emit IOMMU_VENDOR "$iommu_vendor"
+  emit IOMMU_MGAW "$mgaw_min"
+  emit HOST_GPU_VENDOR "$([[ -n $host_gpu ]] && vendor_key "$host_gpu" || echo none)"
+  emit HOST_GPU_MODEL "$([[ -n $host_gpu ]] && gpu_model_of "$host_gpu" || echo none)"
+  emit HOST_GPU_PCI "$host_gpu"
+  emit PT_GPU_VENDOR "$([[ -n $GPU ]] && vendor_key "$GPU" || echo none)"
+  emit PT_GPU_MODEL "${GPU_NAME:-none}"
+  emit PT_GPU_PCI "$gpu_pci"
+  emit PT_GROUP_ISOLATED "$isolated"
+  emit PT_GROUP_SIZE "$group_size"
+  emit FORM_FACTOR "$ff"
+  emit SYS_VENDOR "$(rd "$SYS/class/dmi/id/sys_vendor")"
+  emit PRODUCT_NAME "$(rd "$SYS/class/dmi/id/product_name")"
+  emit RAM_GIB "$([[ -n $mem_kb ]] && echo $(( (mem_kb + 524288) / 1048576 )))"
+  emit IMAGE_FS "$fstype"
+  emit DISPLAYS_HOST "$n_other"
+  emit DISPLAYS_ON_PT_GPU "$n_dgpu"
+  emit LIBVIRT_VERSION "$(have virsh && virsh --version 2>/dev/null | head -n1)"
+  emit QEMU_VERSION "$(have qemu-system-x86_64 && qemu-system-x86_64 --version 2>/dev/null | sed -n 's/^QEMU emulator version \([^ ]*\).*/\1/p' | head -n1)"
+  emit LOOKING_GLASS_VERSION "$lg_ver"
+  emit WARN_COUNT "$n_warn"
+  emit NOGO_COUNT "$n_nogo"
+  i=0; for m in "${nogo_msgs[@]}"; do i=$((i + 1)); emit "NOGO_$i" "$m"; done
+  if (( n_nogo > 0 )); then emit VERDICT NO-GO; exit 1; fi
+  emit VERDICT GO
+  exit 0
+fi
 
 # ------------------------------------------------------------------------------------------
 # Config proposal (stdout)

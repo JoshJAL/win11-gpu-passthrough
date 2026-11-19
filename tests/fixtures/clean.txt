@@ -1,0 +1,14 @@
+# Benign content that must pass the privacy check.
+Home directory placeholders: /home/user, /home/<user>, /home/$USER, /home/${USER}, /home/\$USER, /Users/you
+Repo layout reference: files/home/.config/looking-glass/client.ini
+Contact: you@example.com, user@example.org, 12345678+octocat@users.noreply.github.com
+libvirt default network: 192.168.122.1, 192.168.122.57, gateway 127.0.0.1 and 0.0.0.0, DNS 8.8.8.8 / 1.1.1.1, mask 255.255.255.0
+Guest NIC: 52:54:00:12:34:56 (libvirt prefix), broadcast ff:ff:ff:ff:ff:ff, null 00:00:00:00:00:00
+GPU at PCI address 0000:01:00.0, audio function 0000:01:00.1, bridge 00:1c.2
+Kernel cmdline: quiet iommu=pt intel_iommu=on vfio-pci.ids=10de:2786,10de:22bc
+Placeholders: root=UUID=<redacted> root=PARTUUID=REDACTED cryptdevice=<REDACTED> resume=<redacted> PARTUUID=...
+Paths: /dev/disk/by-uuid/<uuid> /dev/disk/by-id/<disk-id> and /dev/disk/by-id/...
+Fixed placeholder UUID 12345678-1234-1234-1234-123456789abc and 00000000-0000-0000-0000-000000000000
+Link-local prefix fe80:: and loopback ::1, C++ std::string and v8::Local are not addresses
+Kernel 7.2.15, QEMU 9.1.0, tool version 1.2.3, driver 32.0.15.6094, Windows build 10.0.22621.1
+CODEOWNERS style mention: @octocat and @org/team

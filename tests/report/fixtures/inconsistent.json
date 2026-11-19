@@ -1,0 +1,107 @@
+{
+  "schema": 1,
+  "date": "2026-01-10",
+  "profile": {
+    "PROFILE_VERSION": "1",
+    "DISTRO_ID": "arch",
+    "DISTRO_ID_LIKE": "",
+    "DISTRO_VERSION_ID": "",
+    "KERNEL": "6.12.1-arch1-1",
+    "INIT": "systemd",
+    "BOOTLOADER": "grub",
+    "FIREWALL": "ufw",
+    "PKG_MANAGER": "pacman",
+    "DESKTOP": "hyprland",
+    "SESSION_TYPE": "wayland",
+    "CPU_VENDOR": "intel",
+    "CPU_MODEL": "Example CPU 1000",
+    "CPU_PHYS_BITS": "39",
+    "IOMMU": "on",
+    "IOMMU_VENDOR": "intel",
+    "IOMMU_MGAW": "39",
+    "HOST_GPU_VENDOR": "intel",
+    "HOST_GPU_MODEL": "Example Integrated Graphics",
+    "HOST_GPU_PCI": "0000:00:02.0",
+    "PT_GPU_VENDOR": "nvidia",
+    "PT_GPU_MODEL": "Example Discrete GPU 4000",
+    "PT_GPU_PCI": "0000:01:00.0 0000:01:00.1",
+    "PT_GROUP_ISOLATED": "yes",
+    "PT_GROUP_SIZE": "2",
+    "FORM_FACTOR": "laptop",
+    "SYS_VENDOR": "Example Corp",
+    "PRODUCT_NAME": "Laptop 1000",
+    "RAM_GIB": "32",
+    "IMAGE_FS": "ext4",
+    "DISPLAYS_HOST": "1",
+    "DISPLAYS_ON_PT_GPU": "0",
+    "LIBVIRT_VERSION": "12.0.0",
+    "QEMU_VERSION": "10.0.0",
+    "LOOKING_GLASS_VERSION": "B7",
+    "WARN_COUNT": "1",
+    "NOGO_COUNT": "0",
+    "VERDICT": "GO"
+  },
+  "tiers": {
+    "0": {
+      "status": "pass",
+      "existing": false,
+      "checks": {
+        "profile": "pass",
+        "verdict": "pass",
+        "iommu_on": "pass",
+        "pt_group_isolated": "pass",
+        "distro_folder": "pass",
+        "scripts_syntax": "pass",
+        "kvm_access": "pass",
+        "libvirt_group": "pass"
+      }
+    },
+    "1": {
+      "status": "fail",
+      "existing": false,
+      "checks": {
+        "packages": "pass",
+        "libvirtd_active": "pass",
+        "config_installed": "fail",
+        "install_no_drift": "fail",
+        "net_default_active": "pass"
+      }
+    },
+    "2": {
+      "status": "pass",
+      "existing": false,
+      "checks": {
+        "vm_defined": "pass",
+        "windows_boots_to_desktop": "pass",
+        "windows_network": "pass",
+        "vm_disk_nocow_if_btrfs": "skip"
+      }
+    },
+    "3": {
+      "status": "pass",
+      "existing": false,
+      "checks": {
+        "gpu_vfio_bound_while_vm_runs": "pass",
+        "lg_shm_exists": "pass",
+        "usb_hook_log_seen": "skip",
+        "gpu_no_code43": "pass",
+        "lg_shows_desktop_input_works": "pass",
+        "usb_attach_detach_live": "pass",
+        "usb_attach_at_boot": "pass",
+        "switch_back_to_linux": "pass",
+        "launcher_no_prompt": "pass"
+      }
+    }
+  },
+  "human": {
+    "gpu_no_code43": "pass",
+    "lg_shows_desktop_input_works": "pass",
+    "usb_attach_detach_live": "pass",
+    "usb_attach_at_boot": "pass",
+    "windows_boots_to_desktop": "pass",
+    "windows_network": "pass",
+    "switch_back_to_linux": "pass",
+    "launcher_no_prompt": "pass"
+  },
+  "highest_passed": 3
+}

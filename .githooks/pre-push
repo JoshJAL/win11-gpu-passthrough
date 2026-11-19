@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# pre-push: privacy gate + "never push directly to main".
+# Enable with:  git config core.hooksPath .githooks
+#
+# git feeds one line per ref on stdin:
+#   <local ref> <local sha> <remote ref> <remote sha>
+# $1 = remote name, $2 = remote URL.
+#
+# --no-verify skips this hook; CI runs the same check (--static-only) as the
+# backstop.
+
+set -u
+
+zero_re='^0+$'
+top=$(git rev-parse --show-toplevel 2>/dev/null) || {
+  echo "pre-push: cannot find repository top-level" >&2
+  exit 1
+}
+checker="$top/tools/privacy-check.sh"
+[[ -x $checker ]] || {
+  echo "pre-push: $checker missing or not executable; refusing to push unchecked" >&2
+  exit 1
+}
+
+rc=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [[ -n ${local_ref:-} ]] || continue
+
+  case $remote_ref in
+    refs/heads/main|refs/heads/master)
+      echo "pre-push: never push directly to main: open a PR from a branch" >&2
+      rc=1
+      continue ;;
+  esac
+
+  # branch/tag deletion: nothing is being published
+  [[ $local_sha =~ $zero_re ]] && continue
+
+  # new branch: remote sha is all zeros; privacy-check.sh then uses
+  # merge-base with origin/main (then main, then root commit)
+  if ! "$checker" "${remote_sha}..${local_sha}"; then
+    echo "pre-push: push blocked: privacy-check found personal data in the range being pushed; fix, amend or rewrite the commits, then push again" >&2
+    rc=1
+  fi
+done
+
+exit $rc

@@ -1,8 +1,11 @@
 # Runbook for a coding agent
 
 You are setting up a Windows 11 VM with a passed-through GPU (shown through Looking Glass) on the
-human's Omarchy machine (Arch Linux, Hyprland with a Lua config, Quickshell, Limine, ufw). The human
-approves each step. Work from the bundle directory (the folder that contains `detect.sh`). Windows-side
+human's Linux machine. It was built on Omarchy (Arch Linux, Hyprland with a Lua config, Limine, ufw); other
+distros, desktops and GPU combinations are supported through the `distros/`, `desktops/` and `hardware/`
+folders, and a missing one is yours to add. Read `AGENTS.md` first and run `./handoff.sh`: it tells you
+which folders match this machine. The human approves each step. Work from the bundle directory (the folder
+that contains `detect.sh`). Windows-side
 steps live in `guest/GUEST-STEPS.md`; follow that file for them and do not copy its content elsewhere.
 When something fails, read `LESSONS.md` before improvising.
 
@@ -17,7 +20,7 @@ Stop and ask the human before doing any of these.
   Tell them first, and tell them what to run or say when they are back.
 - **Deleting anything.** Disks, ISOs, VM definitions, backups, the flag file, config files.
 - **Dotfiles.** Never commit to, or push from, the human's dotfiles repository without asking. Merging
-  the Hyprland snippet edits a config file that may be tracked; show the diff and let them decide.
+  a desktop snippet (for example the Hyprland one) edits a config file that may be tracked; show the diff and let them decide.
 - **Secrets.** Never paste the Windows product key, a Windows password or any other credential into a
   command line, file, log or chat message. The human types them into Windows.
 - **Other machines' values.** Never copy a value from this bundle's examples (PCI addresses, the GPU
@@ -29,8 +32,8 @@ blocker to the human, do not proceed. The blockers are:
 
 - only one GPU (a single-GPU host would have no display once Windows takes the GPU)
 - IOMMU off (detect.sh prints the fix: enable VT-d/AMD-Vi in the firmware, and add `intel_iommu=on
-  iommu=pt` or `amd_iommu=on iommu=pt` to the Limine kernel command line; this is the human's decision and
-  needs a reboot)
+  iommu=pt` or `amd_iommu=on iommu=pt` to the kernel command line the way the distro folder describes;
+  this is the human's decision and needs a reboot)
 - the GPU shares its IOMMU group with something that is not part of the GPU (not isolated)
 - the only connected displays are on the passthrough GPU
 - no `vmx`/`svm` CPU flag, or no second GPU that is not the boot VGA device
@@ -138,22 +141,13 @@ chooses and types the Windows account name and password; never ask for or record
 When Windows is installed and `virtio-win-guest-tools.exe` has run, the human shuts Windows down from
 inside (Start, Shut down).
 
-## 7. Hyprland: release the GPU at login
+## 7. Desktop: release the GPU at login
 
-`hyprland-snippet.lua` makes Hyprland start without the passthrough GPU whenever the flag file
-`~/.config/hypr/gpu-vm-mode` exists. It is machine-specific and must be **merged** into the human's
-`~/.config/hypr/hyprland.lua`, not pasted blindly:
-
-1. Open the snippet and the human's `hyprland.lua`. If the config already sets `AQ_DRM_DEVICES`,
-   `__EGL_VENDOR_LIBRARY_FILENAMES`, `__GLX_VENDOR_LIBRARY_NAME` or `VK_DRIVER_FILES`, merge the logic
-   instead of adding a second `hl.env()` for the same name.
-2. Set `PASSTHROUGH_PCI` to the first address in `GPU_PCI`, and `HOST_VULKAN_ICD` to the host GPU's ICD
-   (`ls /usr/share/vulkan/icd.d/`).
-3. Parse-check it (the `hl` global is not defined at parse time, which is fine):
-   `luajit -bl ~/.config/hypr/hyprland.lua > /dev/null`.
-4. Show the diff and get approval before writing. Do not commit it.
-
-The change has no effect until the next login, and the snippet does nothing while the flag is absent.
+The passthrough GPU must not be open on the host when the VM takes it, so the desktop has to start without
+it. What that takes depends on the compositor: read `desktops/<your desktop>/README.md` (`./handoff.sh`
+names the folder; for Hyprland that is `desktops/hyprland/`, whose snippet is merged into the human's
+`~/.config/hypr/hyprland.lua`). Show the diff of any change to the human's own config and get approval before
+writing; never commit it.
 
 ## 8. Add the GPU (stage 1), boot, install the Windows-side pieces
 
@@ -184,7 +178,7 @@ winvm-gpu status
 
 The second run unbinds the GPU from the host and binds it to `vfio-pci` ("GPU is now reserved for
 Windows."). If it prints `Close these first, they are using the GPU:`, something still holds the GPU: check that the
-Hyprland snippet took effect (`env | grep AQ_DRM_DEVICES` in a terminal started after login), log out and in again, or close
+desktop snippet took effect (`env | grep AQ_DRM_DEVICES` in a terminal started after login), log out and in again, or close
 the listed programs. `winvm-gpu status` should show `gpu driver: vfio-pci` for every function.
 
 Start the VM and watch it:
@@ -225,7 +219,9 @@ GPU over if needed, starts the VM and opens `looking-glass-client`.
 
 ## 10. Verification checklist
 
-Do each item and report which pass:
+Do each item and report which pass. `./verify.sh` automates what a script can see and stores the rest
+(`./verify.sh --record KEY=pass|fail`); `AGENTS.md` explains the tiers. Mapping: item 6 is T1; items 2 and 7
+(and "Windows boots") are T2; items 1, 3, 4, 5, 8 and 9 are T3. Each tier needs the human's yes first.
 
 1. In Windows (Looking Glass window), Device Manager shows the GPU under Display adapters with no
    warning icon (no Code 43). Remotely: `guest/vm-guest-exec 'Get-PnpDevice -Class Display | Format-Table Status,FriendlyName -AutoSize'`
