@@ -48,7 +48,7 @@ g() { printf '%s' "${P[$1]:-unknown}"; }
 
 # ---- resolve the three axes -----------------------------------------------------------------------
 tried=()                 # distro ids tried, in order
-distro_dir= distro_id=
+distro_id=''
 while IFS= read -r id; do
   tried+=("$id")
   if [[ -z $distro_id ]] && bundle_dir "$B" distros "$id" >/dev/null; then distro_id=$id; fi

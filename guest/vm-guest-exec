@@ -54,7 +54,7 @@ USAGE
 # ---------------------------------------------------------------------------------------------
 # Option parsing
 # ---------------------------------------------------------------------------------------------
-VM= CMD= FILE= TRANSFER=auto TIMEOUT=120 DRY=0
+VM='' CMD='' FILE='' TRANSFER=auto TIMEOUT=120 DRY=0
 HAVE_CMD=0 SCRIPT_ARGS=()
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -217,7 +217,6 @@ wait_for() {  # wait_for <pid>  -> final status JSON in $REPLY; returns 1 on tim
 }
 
 PS=(powershell.exe -NoProfile -NonInteractive)
-PS_ARGS=()   # filled per mode; the guest-exec "arg" list
 CLEANUP=
 
 run_encoded() {
@@ -231,7 +230,8 @@ run_encoded() {
 }
 
 run_file() {
-  local gname="vm-guest-exec-$(date +%s)-$RANDOM.ps1" gpath handle line n b64 wr
+  local gname gpath handle n b64 wr
+  gname="vm-guest-exec-$(date +%s)-$RANDOM.ps1"
   gpath="C:\\Windows\\Temp\\$gname"
   note "transfer=file ($gpath)"
   agent "{\"execute\":\"guest-file-open\",\"arguments\":{\"path\":\"C:\\\\Windows\\\\Temp\\\\$gname\",\"mode\":\"wb\"}}"

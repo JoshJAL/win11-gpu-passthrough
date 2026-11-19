@@ -227,7 +227,7 @@ check "--record into a new file: no tiers, highest_passed -1" test "$(jq -c '[.t
 if [[ $T0_STATUS == pass ]]; then
   VR3=$TMPD/human-fail.json
   "$VERIFY" --results "$VR3" --record windows_boots_to_desktop=fail --record windows_network=pass >/dev/null 2>&1
-  VERIFY_FORCE_FAIL= "$VERIFY" --results "$VR3" --yes-tier 2 >"$TMPD/v4.out" 2>&1; rc=$?
+  VERIFY_FORCE_FAIL="" "$VERIFY" --results "$VR3" --yes-tier 2 >"$TMPD/v4.out" 2>&1; rc=$?
   if [[ $(jq -r '.tiers["1"].status // ""' "$VR3") == pass && $(jq -r '.tiers["2"].checks.vm_defined // ""' "$VR3") == pass ]]; then
     check "recorded fail makes T2 fail (exit 1); the recorded pass for windows_network is used" teq "$rc" 1 "$(jq -r '.tiers["2"].status' "$VR3")" fail "$(jq -r '.tiers["2"].checks.windows_network' "$VR3")" pass
   else

@@ -123,7 +123,7 @@ for d in "$SYS"/bus/pci/devices/*; do
   if [[ $ven == 0x10de || $ven == 0x1002 ]]; then tier1+=("$a"); else tier2+=("$a"); fi
 done
 cands=("${tier1[@]}" "${tier2[@]}")
-GPU= others=
+GPU='' others=''
 if (( ${#gpus[@]} == 0 )); then
   say NO-GO "no PCI display controller (class 0x0300/0x0302) found"
 elif (( ${#gpus[@]} == 1 )); then
@@ -208,7 +208,7 @@ fi
 # ------------------------------------------------------------------------------------------
 # 5. IOMMU_LIMIT
 # ------------------------------------------------------------------------------------------
-IOMMU_LIMIT= mgaw_min=
+IOMMU_LIMIT='' mgaw_min=''
 if (( iommu_on )); then
   if [[ $iommu_vendor == intel ]]; then
     nunits=0

@@ -11,7 +11,6 @@
 
 set -u
 
-remote_name=${1:-}
 zero_re='^0+$'
 top=$(git rev-parse --show-toplevel 2>/dev/null) || {
   echo "pre-push: cannot find repository top-level" >&2

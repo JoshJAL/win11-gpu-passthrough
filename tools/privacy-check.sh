@@ -128,6 +128,7 @@ dl_line_ok() {
 
 # ----------------------------------------------------------- dynamic denylist
 DL_KINDS=(hostname user realname dmi wifi email)
+# shellcheck disable=SC2034  # read through ${!aref} / local -n
 DL_hostname=(); DL_user=(); DL_realname=(); DL_dmi=(); DL_wifi=(); DL_email=()
 DL_ACTIVE=0
 
@@ -413,7 +414,7 @@ default_base() {
 }
 
 scan_range() {
-  local spec=$1 base head hc bc c blob mode path meta seen=" " key ident id i
+  local spec=$1 base head hc bc c blob mode path meta key ident id i
   [[ $spec == *...* || $spec != *..* ]] && usage
   base=${spec%%..*}; head=${spec##*..}
   [[ -n $base && -n $head ]] || usage
@@ -445,8 +446,8 @@ scan_range() {
         id=$(git log -1 --format='%cn%n%ce' "$c")
       fi
       printf '%s\n' "$id" > "$TMP/ident"
-      local iname iemail
-      iname=$(sed -n 1p "$TMP/ident"); iemail=$(sed -n 2p "$TMP/ident")
+      local iemail
+      iemail=$(sed -n 2p "$TMP/ident")
       case ${iemail,,} in
         *@users.noreply.github.com|noreply@github.com) ;;
         *) report "commit:$short/$ident" 2 commit-email "$iemail" \

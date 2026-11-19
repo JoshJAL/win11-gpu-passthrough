@@ -142,6 +142,7 @@ if [[ $(stat -f -c %T "$IMG_DIR" 2>/dev/null) == btrfs ]]; then BTRFS=1; fi
 
 # vi_args <main disk spec>: the virt-install argument list.
 vi_args() {
+  # shellcheck disable=SC2054  # commas belong to virt-install option values
   VI=(virt-install --connect "$URI" --name "$NAME" --os-variant win11
     --memory "$MEM" --vcpus "$VCPUS,sockets=1,cores=$CORES,threads=2" --cpu host-passthrough
     --machine q35 --features smm.state=on
