@@ -9,4 +9,4 @@ the project; it is how far the person got. Add yours with `./handoff.sh`, `./ver
 
 | Distro | Desktop | Hardware | Machine | Highest tier | Verdict | Date | Report |
 |---|---|---|---|---|---|---|---|
-| (no reports yet) | | | | | | | |
+| omarchy | hyprland | intel-host_nvidia-pt | System76 Oryx Pro | T3 | GO | 2026-11-19 | [report](reports/2026-11-19_omarchy_hyprland_intel-host_nvidia-pt_laptop.md) |
