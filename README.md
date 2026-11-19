@@ -1,4 +1,4 @@
-# Windows 11 VM with GPU passthrough on Omarchy
+# Windows 11 VM with GPU passthrough on Linux
 
 A self-contained setup for a Windows 11 virtual machine (libvirt/QEMU) that owns one of your GPUs, shown
 in a window on your Linux desktop through Looking Glass. It was built to run SolidWorks, which needs a
@@ -28,8 +28,9 @@ create the VM and wire up the GPU handover, so only the Windows-side clicks are 
 - **IOMMU on:** VT-d (Intel) or AMD-Vi enabled in the firmware, plus `intel_iommu=on iommu=pt` (or
   `amd_iommu=on iommu=pt`) on the kernel command line. `detect.sh` tells you.
 - **The GPU alone in its IOMMU group** (apart from its own HDMI audio function and PCI bridges).
-- Omarchy (Arch Linux, Hyprland with the Lua config, Limine, usually btrfs, ufw enabled) and `yay` for
-  the two AUR packages.
+- A distro with a folder under `distros/` (Arch and Omarchy today; `ID_LIKE` is followed, so Arch
+  derivatives work) and `yay` for the two AUR packages on Arch-family systems. Other distros, other
+  desktops and other GPU pairings are welcome: see "Help make it work everywhere".
 - RAM and disk for a Windows VM: plan on about half of your RAM and 80 GiB or more of free disk (the
   default disk image is 256 GiB, sparse).
 - A monitor plugged into the passthrough GPU goes dark while Windows has the GPU.
@@ -57,12 +58,28 @@ graphical prompt (`pkexec`).
    `./create-vm.sh --iso /path/to/Win11.iso` (add `--dry-run` first; `--memory`, `--vcpus` and
    `--disk-size` set the VM size).
 4. Install Windows and the guest tools: `guest/GUEST-STEPS.md` steps 1 and 2. Shut Windows down.
-5. Merge `hyprland-snippet.lua` into your `~/.config/hypr/hyprland.lua`.
+5. On Hyprland, merge `desktops/hyprland/hyprland-snippet.lua` into your `~/.config/hypr/hyprland.lua` (`desktops/hyprland/README.md`).
 6. `./enable-gpu.sh`, then `winvm-gpu on` (log out and in when it tells you, run it again), start the
    VM, and do `guest/GUEST-STEPS.md` steps 3 to 6 (GPU driver, Looking Glass host, virtual display).
 7. Shut Windows down, run `./enable-gpu.sh --final`, then open **Windows 11 (GPU)** from the app menu.
 
 If something fails, look up the symptom in `LESSONS.md`.
+
+## Help make it work everywhere
+
+The goal is a VM with GPU and USB passthrough that works on any Linux machine. It was built on one laptop;
+every machine that runs it teaches the bundle something. Open a coding agent in this folder and tell it to
+follow `AGENTS.md`. It will:
+
+1. describe your machine with `./handoff.sh` (hardware and distro only: no names, serials or addresses) and
+   find the matching `distros/`, `desktops/` and `hardware/` folders (a missing one is filled in from its
+   `_template/`);
+2. test in tiers with `./verify.sh`: T0 reads only; T1 (install), T2 (VM + Windows) and T3 (GPU, USB,
+   Looking Glass) each wait for your yes;
+3. write a report (`tools/report.sh`), check it for personal data, show you the diff, and open a pull request.
+
+`COMPATIBILITY.md` lists what has been reported. Only the repository owner can merge; your work goes in as
+a PR from a branch or a fork. Reporting "T0 only" or "NO-GO" is useful too.
 
 ## Let a coding agent do it
 
@@ -75,6 +92,12 @@ You still do the clicks inside Windows.
 | Path | Purpose |
 |---|---|
 | `README.md` | this file |
+| `AGENTS.md` (`CLAUDE.md`) | the contract for a coding agent: rules, tier gates, privacy, how to send a PR |
+| `handoff.sh` | writes `HANDOFF.local.md` (gitignored): this machine's profile and the matching folders |
+| `verify.sh` | read-only checks in tiers T0 to T3; `--yes-tier N` records the human's consent |
+| `distros/`, `desktops/`, `hardware/` | per-distro (`distro.sh` seam), per-desktop and per-GPU-pairing folders, each with a `_template/` |
+| `reports/`, `COMPATIBILITY.md` | verified reports from real machines and the generated matrix |
+| `tools/`, `tests/`, `.githooks/`, `lib/`, `.github/` | privacy check, report generator, their tests, the pre-push hook, shared shell helpers, CI |
 | `LICENSE` | MIT |
 | `FOR_AGENT.md` | step-by-step runbook for a coding agent |
 | `LESSONS.md` | the fifteen failures hit while building this, with symptom, cause and fix |
@@ -83,7 +106,7 @@ You still do the clicks inside Windows.
 | `install.sh` | installs the files below, packages, ufw rules and the USB udev rule; `--check` shows drift |
 | `create-vm.sh` | phase 1: creates the plain Windows 11 VM to install Windows into |
 | `enable-gpu.sh` | phase 2: adds the GPU and the rest; `--final` removes the emulated screen |
-| `hyprland-snippet.lua` | Hyprland config block that frees the GPU from the compositor; merge it by hand |
+| `desktops/hyprland/` | Hyprland config block that frees the GPU from the compositor (merge it by hand) and notes |
 | `guest/GUEST-STEPS.md` | the Windows-side steps and their troubleshooting |
 | `guest/vm-guest-exec` | runs PowerShell in the guest from the host (QEMU guest agent) |
 | `guest/install-vdd.ps1` | installs the Virtual Display Driver in the guest, bound to the GPU |
@@ -100,5 +123,5 @@ You still do the clicks inside Windows.
 ## Built on one machine
 
 This was built and tested on a single machine: an Intel i9 laptop with an NVIDIA RTX 4070 Laptop GPU,
-Omarchy, libvirt 12.8 and Looking Glass B7. Everything else is untested: other GPUs, AMD, desktops, other
-distributions. The scripts check what they can, but expect to adapt.
+Omarchy, libvirt 12.8 and Looking Glass B7. Anything not listed in `COMPATIBILITY.md` is untested: other
+GPUs, AMD, desktops, other distributions. The scripts check what they can, but expect to adapt.
