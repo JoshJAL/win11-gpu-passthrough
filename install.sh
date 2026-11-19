@@ -7,8 +7,10 @@
 #
 #   --conf FILE   use FILE as the machine config (it is installed as /etc/win11-vm.conf);
 #                 without it the existing /etc/win11-vm.conf is used
-#   --packages    first install the packages (pacman + AUR via yay), enable libvirtd, autostart
+#   --packages    first install the packages (see distros/<id>/distro.sh), enable libvirtd, autostart
 #                 the default network and add you to the libvirt group
+#   --distro ID   use distros/ID/distro.sh instead of the one picked from /etc/os-release
+#                 (ID, then each ID_LIKE word; ./handoff.sh shows which folder this machine gets)
 #
 # Run it as your normal user (VM_USER in the config), not with sudo. Files that get replaced are
 # backed up first: system files to /var/backups/win11-gpu-vm/<time>/, yours to
@@ -17,27 +19,21 @@ set -euo pipefail
 
 B=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 F=$B/files
+# shellcheck source=lib/bundle.sh
+. "$B/lib/bundle.sh"
 SYS_CONF=/etc/win11-vm.conf
 LEGACY_BOOT_UNIT=/etc/systemd/system/winvm-gpu-boot.service
-PACMAN_PKGS=(qemu-desktop qemu-hw-usb-host qemu-hw-usb-redirect libvirt virt-manager virt-viewer
-  edk2-ovmf swtpm dnsmasq libvirt-python)
-AUR_PKGS=(looking-glass virtio-win)
-UFW_RULES=(  # "<tuple regex in /etc/ufw/user.rules> => <ufw arguments>"  (Omarchy's ufw drops VM DHCP/DNS/NAT)
-  'allow udp 67 .* in_virbr0( |$) => allow in on virbr0 to any port 67 proto udp comment libvirt-dhcp'
-  'allow any 53 .* in_virbr0( |$) => allow in on virbr0 to any port 53 comment libvirt-dns'
-  'route:allow any any .* in_virbr0( |$) => route allow in on virbr0 comment libvirt-vm-out'
-  'route:allow any any .* out_virbr0( |$) => route allow out on virbr0 comment libvirt-vm-in'
-)
-
 die() { echo "install.sh: $*" >&2; exit 1; }
 
 # ---------------------------------------------------------------------------------------------
-# Root half: `pkexec install.sh __root <stage> <stamp> <packages 0|1> <user>`. Copies the staged
-# system files in place, then reloads whatever they feed.
+# Root half: `pkexec install.sh __root <stage> <stamp> <packages 0|1> <user> <distro id>`. Copies the
+# staged system files in place, then reloads whatever they feed. The distro id picks distros/<id>/distro.sh
+# (see lib/bundle.sh: the id must be a plain name and the file must stay inside the bundle).
 # ---------------------------------------------------------------------------------------------
 if [[ ${1:-} == __root ]]; then
   [[ $EUID == 0 ]] || die "__root must run as root"
-  S=$2 TS=$3 PKG=$4 U=$5
+  S=$2 TS=$3 PKG=$4 U=$5 D=${6:-}
+  load_distro "$B" "$D" || die "__root: no usable distros/$D/distro.sh"
   changed=()
   while IFS= read -r -d '' src; do
     dst=${src#"$S"/root}
@@ -65,11 +61,7 @@ if [[ ${1:-} == __root ]]; then
     usermod -aG libvirt "$U"
   fi
 
-  if command -v ufw >/dev/null && grep -qx 'ENABLED=yes' /etc/ufw/ufw.conf 2>/dev/null; then
-    for r in "${UFW_RULES[@]}"; do
-      grep -qE "^### tuple ### ${r%% => *}" /etc/ufw/user.rules || { read -ra a <<<"${r#* => }"; ufw "${a[@]}"; }
-    done
-  fi
+  distro_firewall_virbr0
 
   # libvirtd only discovers hook scripts at startup. Restarting it leaves running VMs alone.
   if [[ " ${changed[*]} " == *" /etc/libvirt/hooks/qemu.d/"* ]]; then
@@ -83,18 +75,23 @@ fi
 # ---------------------------------------------------------------------------------------------
 # User half.
 # ---------------------------------------------------------------------------------------------
-CHECK=0 PACKAGES=0 CONF=$SYS_CONF
+CHECK=0 PACKAGES=0 CONF=$SYS_CONF DISTRO=
 while [[ $# -gt 0 ]]; do
   case $1 in
     --check) CHECK=1 ;;
     --packages) PACKAGES=1 ;;
     --conf) CONF=$(realpath "${2:?--conf needs a file}"); shift ;;
+    --distro) DISTRO=${2:?--distro needs an id}; shift ;;
     -h|--help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown argument: $1 (see --help)" ;;
   esac
   shift
 done
 [[ $EUID != 0 ]] || die "run as your normal user, not root (it asks for root itself)"
+if [[ -z $DISTRO ]]; then
+  DISTRO=$(pick_distro "$B") || die "no distros/<id>/ folder for this machine (os-release ID='$(os_release_val ID)' ID_LIKE='$(os_release_val ID_LIKE)'). Copy distros/_template/ to distros/<ID>/, fill it in (see distros/arch/), or pass --distro <id>"
+fi
+load_distro "$B" "$DISTRO" || die "--distro $DISTRO: no usable distros/$DISTRO/distro.sh (an id is [a-z0-9._-], the folder must hold distro.sh)"
 [[ -r $CONF ]] || die "$CONF not found. Create one: ./detect.sh > win11-vm.conf, review it, then ./install.sh --conf win11-vm.conf"
 
 # The config is sourced by bash as root later, so only plain KEY=value lines are accepted.
@@ -158,11 +155,6 @@ put 0644 user/.config/looking-glass/client.ini <"$F/home/.config/looking-glass/c
 
 target() { case $1 in "$S"/root/*) echo "${1#"$S"/root}" ;; *) echo "$HOME/${1#"$S"/user/}" ;; esac; }
 same() { [[ -e $2 ]] && cmp -s "$1" "$2" && [[ $(stat -c %a "$1") == $(stat -c %a "$2") ]]; }
-ufw_missing() {
-  command -v ufw >/dev/null && grep -qx 'ENABLED=yes' /etc/ufw/ufw.conf 2>/dev/null || return 0
-  local r
-  for r in "${UFW_RULES[@]}"; do grep -qE "^### tuple ### ${r%% => *}" /etc/ufw/user.rules 2>/dev/null || echo "ufw ${r#* => }"; done
-}
 
 # ---------------------------------------------------------------------------------------------
 # --check
@@ -181,7 +173,7 @@ if [[ $CHECK == 1 ]]; then
   if [[ -e /etc/libvirt/hooks/qemu ]] && grep -q winvm-usb /etc/libvirt/hooks/qemu; then
     drift=1; echo "LEGACY   /etc/libvirt/hooks/qemu still runs winvm-usb (now done by qemu.d/win11-usb); remove it"
   fi
-  while IFS= read -r m; do drift=1; echo "UFW      missing rule: $m"; done < <(ufw_missing)
+  while IFS= read -r m; do drift=1; echo "UFW      missing rule: $m"; done < <(distro_firewall_check)
   [[ -e $LEGACY_BOOT_UNIT ]] && { drift=1; echo "LEGACY   $LEGACY_BOOT_UNIT reserves the GPU at boot; install.sh removes it"; }
   [[ -e /dev/shm/looking-glass ]] || echo "note     /dev/shm/looking-glass does not exist yet (created by tmpfiles at boot or by install.sh)"
   if [[ $drift == 0 ]]; then echo "No drift."; else echo "Drift found. Run ./install.sh$([[ $CONF != "$SYS_CONF" ]] && echo " --conf $CONF") to bring it in line."; fi
@@ -193,10 +185,7 @@ fi
 # ---------------------------------------------------------------------------------------------
 TS=$(date +%Y%m%d-%H%M%S)
 if [[ $PACKAGES == 1 ]]; then
-  echo "Installing packages (pacman, then AUR)…"
-  pkexec pacman -S --needed --noconfirm "${PACMAN_PKGS[@]}"
-  command -v yay >/dev/null || die "yay not found; install ${AUR_PKGS[*]} from the AUR yourself, then re-run without --packages"
-  yay -S --needed --noconfirm --sudo pkexec "${AUR_PKGS[@]}"
+  distro_install_packages
 fi
 
 for src in "$S"/user/.local/bin/win11-vm "$S"/user/.local/share/applications/windows-11-gpu.desktop "$S"/user/.config/looking-glass/client.ini; do
@@ -209,11 +198,11 @@ done
 
 need_root=$PACKAGES
 while IFS= read -r -d '' src; do same "$src" "$(target "$src")" || need_root=1; done < <(find "$S/root" -type f -print0)
-[[ -n $(ufw_missing) ]] && need_root=1
+[[ -n $(distro_firewall_check) ]] && need_root=1
 [[ -e $LEGACY_BOOT_UNIT ]] && need_root=1
 if [[ $need_root == 1 ]]; then
   echo "System files: approve the password prompt…"
-  pkexec "$B/install.sh" __root "$S" "$TS" "$PACKAGES" "$VM_USER"
+  pkexec "$B/install.sh" __root "$S" "$TS" "$PACKAGES" "$VM_USER" "$DISTRO"
 else
   echo "  system files already up to date"
 fi

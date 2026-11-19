@@ -1,2 +1,5 @@
 win11-vm.conf
 *.bak
+*.local.*
+HANDOFF.local.md
+results.local.json

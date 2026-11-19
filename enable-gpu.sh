@@ -193,7 +193,7 @@ cat <<EOF
 
 Next steps (stage 1 done; QXL screen kept):
   1. winvm-gpu on                  (first run prepares Hyprland; log out and back in, then run it again)
-                                   Hyprland must honour the flag: merge hyprland-snippet.lua first
+                                   Hyprland must honour the flag: merge desktops/hyprland/hyprland-snippet.lua first
   2. virsh -c $URI start $VM_NAME && virt-viewer -c $URI $VM_NAME
   3. In Windows: NVIDIA driver, Looking Glass host, Virtual Display Driver (guest/GUEST-STEPS.md)
   4. Shut Windows down, then: ./enable-gpu.sh --final
