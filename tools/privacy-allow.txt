@@ -1,0 +1,36 @@
+# privacy-allow.txt - exceptions for tools/privacy-check.sh
+#
+# Comments only on their own line (a '#' inside an entry is part of it).
+#
+#   path: <glob>                    content of matching files is not scanned
+#                                   (commit messages and author/committer
+#                                   identities are NEVER exempted)
+#   line: <path-glob> :: <string>   a single known-safe matched value (exact,
+#                                   case-insensitive) in matching paths
+#   dlline: <path-glob> :: <string> text that is removed from a line before the LOCAL denylist
+#                                   (names, hostname, ...) is checked; static rules ignore it
+#
+# Globs are bash patterns matched against the repo-relative path; '*' also
+# matches '/'. Keep this file minimal: every entry is a hole in the gate and
+# changes to it need review.
+
+# The checker's own source documents the patterns and placeholders.
+path: tools/privacy-check.sh
+path: tools/privacy-allow.txt
+
+# Deliberately fake leaks used to test the checker. Anything placed here is NOT
+# scanned in CI, so review every change under tests/fixtures/ by hand.
+path: tests/fixtures/*
+
+# Well-known Windows device setup class GUID (Display adapters), a public
+# constant of the OS, not an identifier of anyone's machine.
+line: guest/install-vdd.ps1 :: 4D36E968-E325-11CE-BFC1-08002BE10318
+
+# The repository owner's own public GitHub handle (LICENSE, clone URLs, CODEOWNERS, commit identity).
+# "dlline:" entries only silence the LOCAL denylist, and only for the exact string: the rest of the line
+# is still checked, so "JoshJAL Levine" would still be caught. A contributor's own handle is never listed here.
+dlline: LICENSE :: Copyright (c) 2026 JoshJAL
+dlline: *.md :: github.com/JoshJAL/win11-gpu-passthrough
+dlline: .github/* :: @JoshJAL
+dlline: commit-identity :: JoshJAL
+dlline: commit-identity :: @users.noreply.github.com

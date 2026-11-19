@@ -1,0 +1,1 @@
+ls -l /dev/disk/by-id/nvme-FakeVendor_SSD_1234567890

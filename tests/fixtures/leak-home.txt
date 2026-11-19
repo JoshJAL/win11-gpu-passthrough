@@ -1,0 +1,1 @@
+Mount the share from /home/jdoe42/vm-images/win11.qcow2 before first boot.

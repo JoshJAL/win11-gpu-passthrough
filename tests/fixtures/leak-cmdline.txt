@@ -1,0 +1,1 @@
+GRUB_CMDLINE_LINUX="root=PARTUUID=0a1b2c3d-04 rw quiet"
