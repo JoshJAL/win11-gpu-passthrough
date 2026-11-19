@@ -23,6 +23,7 @@
 # serials, Wi-Fi SSIDs, git e-mail) lives in memory only and is never written
 # to disk or printed; findings from it only name the rule kind.
 
+# shellcheck disable=SC2034  # DL_<kind> arrays are read through ${!aref} / local -n
 set -u
 export LC_ALL=C
 
@@ -128,7 +129,6 @@ dl_line_ok() {
 
 # ----------------------------------------------------------- dynamic denylist
 DL_KINDS=(hostname user realname dmi wifi email)
-# shellcheck disable=SC2034  # read through ${!aref} / local -n
 DL_hostname=(); DL_user=(); DL_realname=(); DL_dmi=(); DL_wifi=(); DL_email=()
 DL_ACTIVE=0
 

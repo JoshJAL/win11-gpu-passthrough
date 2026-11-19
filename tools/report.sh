@@ -31,7 +31,7 @@ COMPAT=$B/COMPATIBILITY.md
 RESULTS=$B/results.local.json
 DATE=$(date +%F)
 NOTES=()
-MODE=write
+MODE="write"
 
 usage() { sed -n '2,23p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 die_usage() { echo "report.sh: $*" >&2; exit 2; }
